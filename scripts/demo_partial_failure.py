@@ -5,12 +5,16 @@ def main() -> None:
     reset_all()
     response = create_trip(base_trip_payload(payment_force_decline=True))
 
-    print("Payment failed after flight and hotel succeeded.")
-    print("The trip is FAILED, but resources remain reserved.")
-    print("This demonstrates the need for a saga, TCC, or another recovery mechanism.")
+    print("=== BEFORE (naive design) ===")
+    print("Payment failed → trip stuck as FAILED, flight and hotel still reserved.")
+    print()
+    print("=== AFTER (compensation) ===")
+    print("Payment failed → trip enters COMPENSATING → flight and hotel cancelled → COMPENSATED.")
+    print()
     print("Trip response:")
     print(pretty(response.json()))
-    print("State:")
+    print()
+    print("State (verify flight=CANCELLED, hotel=CANCELLED, trip=COMPENSATED):")
     print(pretty(get_state()))
 
 

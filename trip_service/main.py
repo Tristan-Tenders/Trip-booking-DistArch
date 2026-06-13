@@ -74,7 +74,6 @@ async def create_trip(request: CreateTripRequest) -> dict:
             idempotency_key=request.idempotency_key,
         )
     except asyncpg.UniqueViolationError:
-        # two requests with the same key hit this simultaneously; one lost the insert race
         existing = await db.get_trip_by_idempotency_key(request.idempotency_key)
         return existing
     trip_id = trip["id"]
@@ -127,11 +126,34 @@ async def create_trip(request: CreateTripRequest) -> dict:
             status="CONFIRMED",
             error_message=None,
         )
+
     except Exception as exc:
-        failed = await db.update_trip(trip_id, status="FAILED", error_message=str(exc))
+        # ---- Compensation ajoutée (Person 3) ----
+        # Au lieu de juste marquer FAILED, on tente d'annuler le vol et l'hôtel
+        trip = await db.update_trip(trip_id, status="COMPENSATING", error_message=str(exc))
+
+        compensation_error = None
+        try:
+            if trip["flight_booking_id"]:
+                await clients.cancel_flight_booking(str(trip["flight_booking_id"]))
+            if trip["hotel_reservation_id"]:
+                await clients.cancel_hotel_reservation(str(trip["hotel_reservation_id"]))
+            trip = await db.update_trip(trip_id, status="COMPENSATED")
+        except Exception as comp_exc:
+            compensation_error = comp_exc
+            trip = await db.update_trip(
+                trip_id,
+                status="COMPENSATION_FAILED",
+                error_message=str(comp_exc),
+            )
+
         raise HTTPException(
             status_code=502,
-            detail={"trip_id": str(trip_id), "error": failed["error_message"]},
+            detail={
+                "trip_id": str(trip_id),
+                "error": str(exc),
+                "compensation": "COMPENSATED" if compensation_error is None else "COMPENSATION_FAILED",
+            },
         )
 
     try:
