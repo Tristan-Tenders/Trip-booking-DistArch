@@ -90,3 +90,19 @@ def test_duplicate_event_creates_duplicate_notifications_in_baseline() -> None:
     notifications = wait_for_notifications(response.json()["id"], minimum=2)
     assert len(notifications) == 2
     assert notifications[0]["event_id"] == notifications[1]["event_id"]
+
+# Person 3 ajout — test compensation
+def test_payment_failure_triggers_compensation() -> None:
+    reset_all()
+    with httpx.Client(timeout=15) as client:
+        response = client.post(f"{TRIP_URL}/trips", json=trip_payload(payment_force_decline=True))
+        trips = client.get(f"{TRIP_URL}/trips").json()
+        flight_state = client.get(f"{FLIGHT_URL}/debug/state").json()
+        hotel_state = client.get(f"{HOTEL_URL}/debug/state").json()
+        payment_state = client.get(f"{PAYMENT_URL}/debug/state").json()
+
+    assert response.status_code == 502
+    assert trips[0]["status"] == "COMPENSATED"
+    assert flight_state["flight_bookings"][0]["status"] == "CANCELLED"
+    assert hotel_state["hotel_reservations"][0]["status"] == "CANCELLED"
+    assert payment_state["payment_authorizations"][0]["status"] == "DECLINED"
