@@ -11,7 +11,9 @@ pool: asyncpg.Pool | None = None
 
 
 def database_url() -> str:
-    return os.getenv("TRIP_DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/trip_db")
+    return os.getenv(
+        "TRIP_DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/trip_db"
+    )
 
 
 async def connect_with_retry() -> None:
@@ -59,10 +61,28 @@ async def init_db() -> None:
         )
         """
     )
+    # Add a column to exitsing tables without droping data
+    await get_pool().execute(
+        "ALTER TABLE trips ADD COLUMN IF NOT EXISTS idempotency_key TEXT"
+    )
+    await get_pool().execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS trips_idempotency_key_idx
+        ON trips (idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        """
+    )
 
 
 async def reset_db() -> None:
     await get_pool().execute("DELETE FROM trips")
+
+
+async def get_trip_by_idempotency_key(key: str) -> dict | None:
+    row = await get_pool().fetchrow(
+        "SELECT * FROM trips WHERE idempotency_key = $1", key
+    )
+    return dict(row) if row else None
 
 
 async def create_trip(
@@ -72,12 +92,13 @@ async def create_trip(
     flight_id: str,
     hotel_id: str,
     nights: int,
+    idempotency_key: str | None = None,
 ) -> dict:
     trip_id = uuid4()
     row = await get_pool().fetchrow(
         """
-        INSERT INTO trips (id, user_id, traveler_name, flight_id, hotel_id, nights, status)
-        VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')
+        INSERT INTO trips (id, user_id, traveler_name, flight_id, hotel_id, nights, status, idempotency_key)
+        VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7)
         RETURNING *
         """,
         trip_id,
@@ -86,6 +107,7 @@ async def create_trip(
         flight_id,
         hotel_id,
         nights,
+        idempotency_key,
     )
     return dict(row)
 
@@ -111,4 +133,3 @@ async def get_trip(trip_id: UUID) -> dict | None:
 async def state() -> dict[str, list[dict]]:
     rows = await get_pool().fetch("SELECT * FROM trips ORDER BY created_at, id")
     return {"trips": [dict(row) for row in rows]}
-
