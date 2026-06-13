@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+import asyncpg
 from fastapi import FastAPI, HTTPException
 
 from shared.logging import configure_logging
@@ -57,13 +58,25 @@ async def get_trip(trip_id: UUID) -> dict:
 
 @app.post("/trips")
 async def create_trip(request: CreateTripRequest) -> dict:
-    trip = await db.create_trip(
-        user_id=request.user_id,
-        traveler_name=request.traveler_name,
-        flight_id=request.flight_id,
-        hotel_id=request.hotel_id,
-        nights=request.nights,
-    )
+    # same key seen before — skip the booking and return what we already did
+    if request.idempotency_key is not None:
+        existing = await db.get_trip_by_idempotency_key(request.idempotency_key)
+        if existing is not None:
+            return existing
+
+    try:
+        trip = await db.create_trip(
+            user_id=request.user_id,
+            traveler_name=request.traveler_name,
+            flight_id=request.flight_id,
+            hotel_id=request.hotel_id,
+            nights=request.nights,
+            idempotency_key=request.idempotency_key,
+        )
+    except asyncpg.UniqueViolationError:
+        # two requests with the same key hit this simultaneously; one lost the insert race
+        existing = await db.get_trip_by_idempotency_key(request.idempotency_key)
+        return existing
     trip_id = trip["id"]
 
     try:
@@ -76,7 +89,9 @@ async def create_trip(request: CreateTripRequest) -> dict:
             traveler_name=request.traveler_name,
             delay_after_check_ms=request.simulate.flight_delay_after_check_ms,
         )
-        trip = await db.update_trip(trip_id, flight_booking_id=UUID(flight_booking["id"]))
+        trip = await db.update_trip(
+            trip_id, flight_booking_id=UUID(flight_booking["id"])
+        )
 
         hotel_reservation = await clients.reserve_hotel(
             hotel_id=request.hotel_id,
@@ -86,7 +101,9 @@ async def create_trip(request: CreateTripRequest) -> dict:
             delay_after_check_ms=request.simulate.hotel_delay_after_check_ms,
             force_fail=request.simulate.hotel_force_fail,
         )
-        trip = await db.update_trip(trip_id, hotel_reservation_id=UUID(hotel_reservation["id"]))
+        trip = await db.update_trip(
+            trip_id, hotel_reservation_id=UUID(hotel_reservation["id"])
+        )
 
         flight = await clients.get_flight(request.flight_id)
         hotel = await clients.get_hotel(request.hotel_id)
@@ -112,10 +129,15 @@ async def create_trip(request: CreateTripRequest) -> dict:
         )
     except Exception as exc:
         failed = await db.update_trip(trip_id, status="FAILED", error_message=str(exc))
-        raise HTTPException(status_code=502, detail={"trip_id": str(trip_id), "error": failed["error_message"]})
+        raise HTTPException(
+            status_code=502,
+            detail={"trip_id": str(trip_id), "error": failed["error_message"]},
+        )
 
     try:
-        await events.publish_confirmation(trip, publish_twice=request.simulate.publish_event_twice)
+        await events.publish_confirmation(
+            trip, publish_twice=request.simulate.publish_event_twice
+        )
     except Exception:
         # INTENTIONAL NAIVE DESIGN:
         # The trip is already confirmed. There is no transactional outbox to
@@ -123,4 +145,3 @@ async def create_trip(request: CreateTripRequest) -> dict:
         logging.exception("Failed to publish trip.confirmed event")
 
     return trip
-
