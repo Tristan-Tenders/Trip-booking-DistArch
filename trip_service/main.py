@@ -58,7 +58,6 @@ async def get_trip(trip_id: UUID) -> dict:
 
 @app.post("/trips")
 async def create_trip(request: CreateTripRequest) -> dict:
-    # same key seen before — skip the booking and return what we already did
     if request.idempotency_key is not None:
         existing = await db.get_trip_by_idempotency_key(request.idempotency_key)
         if existing is not None:
@@ -140,8 +139,6 @@ async def create_trip(request: CreateTripRequest) -> dict:
         )
 
     except Exception as exc:
-        # ---- Compensation ajoutée (Person 3) ----
-        # Au lieu de juste marquer FAILED, on tente d'annuler le vol et l'hôtel
         trip = await db.update_trip(trip_id, status="COMPENSATING", error_message=str(exc))
 
         compensation_error = None
