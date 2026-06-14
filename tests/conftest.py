@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 import asyncpg
-import pytest_asyncio
+import pytest
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -16,7 +16,7 @@ FLIGHT_DATABASE_URL = os.getenv(
 )
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def flight_db_pool():
     pool = await asyncpg.create_pool(FLIGHT_DATABASE_URL)
     yield pool
