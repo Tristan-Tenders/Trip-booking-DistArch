@@ -126,4 +126,6 @@ Do not assume the starter app is correct. Its flaws are the point of the exercis
 
 | Concept | Category | Main files modified | How to test it |
 |---|---|---|---|
+| Database transactions | A1 | `flight_service/main.py`, `hotel_service/main.py` | `docker compose run --rm tools python scripts/demo_transaction_rollback.py` |
+| Database constraints | A1 | `flight_service/db.py`, `hotel_service/db.py` | `docker compose run --rm tools python scripts/demo_constraints.py` |
 | Idempotency key for client requests | C | `trip_service/schemas.py`, `trip_service/db.py`, `trip_service/main.py` | `docker compose run --rm tools pytest tests/test_idempotency.py -v` or `docker compose run --rm tools python scripts/demo_duplicate_request.py` |
