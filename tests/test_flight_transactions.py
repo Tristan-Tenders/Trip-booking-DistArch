@@ -15,14 +15,15 @@ async def test_flight_booking_transaction_rollback(flight_db_pool):
 
         # attempt booking that forces failure after decrement
         try:
-            await conn.fetchrow("""
-                UPDATE flights
-                SET seats_available = seats_available - 1
-                WHERE id = 'FL-MANY-SEATS'
-            """)
+            async with conn.transaction():
+                await conn.fetchrow("""
+                    UPDATE flights
+                    SET seats_available = seats_available - 1
+                    WHERE id = 'FL-MANY-SEATS'
+                """)
 
-            # simulate failure (like your fail_after_decrement logic)
-            raise Exception("forced failure")
+                # simulate failure (like your fail_after_decrement logic)
+                raise Exception("forced failure")
 
         except Exception:
             pass
