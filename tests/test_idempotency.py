@@ -88,7 +88,7 @@ def test_no_key_still_creates_duplicate_trips() -> None:
 
 
 def test_idempotency_key_on_failed_trip_returns_failure() -> None:
-    """A repeated request for a failed trip returns the same failed trip, not a retry."""
+    """A repeated request for a failed trip replays the original 502, not a new attempt."""
     reset_all()
     with httpx.Client(timeout=15) as client:
         first = client.post(
@@ -101,7 +101,5 @@ def test_idempotency_key_on_failed_trip_returns_failure() -> None:
         )
 
     assert first.status_code == 502
-    # Second request returns the cached failed trip (200 from idempotency lookup)
-    assert second.status_code == 200
-    assert second.json()["status"] == "FAILED"
-    assert second.json()["id"] == first.json()["detail"]["trip_id"]
+    assert second.status_code == 502
+    assert first.json()["detail"]["trip_id"] == second.json()["detail"]["trip_id"]
