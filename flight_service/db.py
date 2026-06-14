@@ -63,6 +63,14 @@ async def init_db() -> None:
         )
         """
     )
+    await db.execute("""
+        DO $$ BEGIN
+            ALTER TABLE flights
+                ADD CONSTRAINT flights_seats_nonneg CHECK (seats_available >= 0);
+        EXCEPTION WHEN duplicate_object THEN
+            NULL;
+        END $$
+    """)
     await seed_db()
 
 
