@@ -69,6 +69,7 @@ async def reserve_hotel(hotel_id: str, request: HotelReservationRequest) -> dict
                 SELECT *
                 FROM hotels
                 WHERE id = $1
+                FOR UPDATE
                 """,
                 hotel_id,
             )
@@ -76,9 +77,11 @@ async def reserve_hotel(hotel_id: str, request: HotelReservationRequest) -> dict
             if hotel is None:
                 raise HTTPException(status_code=404, detail="Hotel not found")
 
-            # INTENTIONAL NAIVE DESIGN:
-            # This check/update is not protected by a transaction or row lock.
-            # Several concurrent requests can pass this check before any decrement is visible.
+            # CONCURRENCY CONTROL (pessimistic locking):
+            # FOR UPDATE locks this row for the duration of the transaction.
+            # Concurrent requests for the same hotel must wait until this
+            # transaction commits or rolls back, so they always see an
+            # up-to-date rooms_available value before checking it.
             if hotel["rooms_available"] < request.rooms:
                 raise HTTPException(status_code=409, detail="Not enough rooms available")
 

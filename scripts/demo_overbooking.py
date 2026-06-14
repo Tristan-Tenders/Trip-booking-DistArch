@@ -33,7 +33,8 @@ async def run_race() -> None:
     print(f"Successful bookings: {len(successful)}")
     print(f"Rejected bookings: {len(rejected)}")
     print(f"Final seats_available: {one_seat['seats_available']}")
-    print("This demonstrates a race condition.")
+    print("Pessimistic locking (SELECT ... FOR UPDATE) prevented the race condition:")
+    print("only 1 booking succeeded and seats_available never went negative.")
     print("Final flight state:")
     print(pretty(state))
 

@@ -66,6 +66,7 @@ async def book_flight(flight_id: str, request: FlightBookingRequest) -> dict:
                 SELECT *
                 FROM flights
                 WHERE id = $1
+                FOR UPDATE
                 """,
                 flight_id,
             )
@@ -73,10 +74,13 @@ async def book_flight(flight_id: str, request: FlightBookingRequest) -> dict:
             if flight is None:
                 raise HTTPException(status_code=404, detail="Flight not found")
 
-            # INTENTIONAL NAIVE DESIGN:
-            # This check/update is not protected by a transaction or row lock.
-            # Several concurrent requests can pass this check before any decrement is visible.
+            # CONCURRENCY CONTROL (pessimistic locking):
+            # FOR UPDATE locks this row for the duration of the transaction.
+            # Concurrent requests for the same flight must wait until this
+            # transaction commits or rolls back, so they always see an
+            # up-to-date seats_available value before checking it.
             if flight["seats_available"] < request.seats:
+                
                 raise HTTPException(status_code=409, detail="Not enough seats available")
 
             await maybe_delay(request.delay_after_check_ms)
