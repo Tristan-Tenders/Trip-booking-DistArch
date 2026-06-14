@@ -1,66 +1,43 @@
-from common import reset_all, FLIGHT_URL, HOTEL_URL, pretty
-import httpx
+import asyncio
+import os
+
+import asyncpg
+
+FLIGHT_DATABASE_URL = os.getenv(
+    "FLIGHT_DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/flight_db"
+)
+HOTEL_DATABASE_URL = os.getenv(
+    "HOTEL_DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/hotel_db"
+)
 
 
-def main() -> None:
-    reset_all()
+async def demo() -> None:
+    print("=== DATABASE CONSTRAINT DEMO ===")
+    print("Bypasses the application-level availability check and attempts a direct")
+    print("negative-value UPDATE, demonstrating the CHECK constraint as last line of defense.\n")
 
-    with httpx.Client(timeout=10) as client:
-        print("=== INITIAL STATE ===")
+    conn = await asyncpg.connect(FLIGHT_DATABASE_URL)
+    try:
+        await conn.execute(
+            "UPDATE flights SET seats_available = -1 WHERE id = 'FL-ONE-SEAT'"
+        )
+        print("FAIL: flight seats_available = -1 was accepted (constraint missing)")
+    except asyncpg.CheckViolationError:
+        print("PASS: flight CHECK constraint rejected seats_available = -1")
+    finally:
+        await conn.close()
 
-        flights = client.get(f"{FLIGHT_URL}/flights").json()
-        hotels = client.get(f"{HOTEL_URL}/hotels").json()
-
-        print("Flights:")
-        print(pretty(flights))
-        print()
-        print("Hotels:")
-        print(pretty(hotels))
-
-        print("\n=== ATTEMPT INVALID UPDATES ===")
-
-        # Try to break flight constraint
-        try:
-            res = client.post(
-                f"{FLIGHT_URL}/flights/FL-ONE-SEAT/bookings",
-                json={
-                    "trip_id": "11111111-1111-1111-1111-111111111111",
-                    "traveler_name": "Constraint Test",
-                    "seats": 999,  # forces negative availability
-                },
-            )
-            print("Flight response:")
-            print(res.status_code, res.text)
-        except Exception as e:
-            print("Flight constraint triggered:", str(e))
-
-        # Try to break hotel constraint
-        try:
-            res = client.post(
-                f"{HOTEL_URL}/hotels/HT-ONE-ROOM/reservations",
-                json={
-                    "trip_id": "11111111-1111-1111-1111-111111111111",
-                    "traveler_name": "Constraint Test",
-                    "rooms": 999,  # forces negative availability
-                    "nights": 1,
-                },
-            )
-            print("Hotel response:")
-            print(res.status_code, res.text)
-        except Exception as e:
-            print("Hotel constraint triggered:", str(e))
-
-        print("\n=== FINAL STATE ===")
-
-        flights_after = client.get(f"{FLIGHT_URL}/flights").json()
-        hotels_after = client.get(f"{HOTEL_URL}/hotels").json()
-
-        print("Flights:")
-        print(pretty(flights_after))
-        print()
-        print("Hotels:")
-        print(pretty(hotels_after))
+    conn = await asyncpg.connect(HOTEL_DATABASE_URL)
+    try:
+        await conn.execute(
+            "UPDATE hotels SET rooms_available = -1 WHERE id = 'HT-ONE-ROOM'"
+        )
+        print("FAIL: hotel rooms_available = -1 was accepted (constraint missing)")
+    except asyncpg.CheckViolationError:
+        print("PASS: hotel CHECK constraint rejected rooms_available = -1")
+    finally:
+        await conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(demo())

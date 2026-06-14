@@ -90,11 +90,11 @@ docker compose down
 
 ## Intentional Weaknesses
 
-- Flight and hotel inventory checks can race.
-- Duplicate trip requests create duplicate trips and side effects.
-- Payment failure after resource reservation does not trigger compensation.
-- Notification events are consumed without deduplication.
-- Events are published directly, without a transactional outbox.
+- ~~Flight and hotel inventory checks can race.~~ Fixed: pessimistic locking (concept-3).
+- ~~Duplicate trip requests create duplicate trips and side effects.~~ Fixed: idempotency key (concept-4).
+- ~~Payment failure after resource reservation does not trigger compensation.~~ Fixed: saga with compensation (concept-5).
+- Notification events are consumed without deduplication. (still open)
+- Events are published directly, without a transactional outbox. (still open)
 - There is no sharding, caching, replica-lag simulation, quorum logic, GraphQL, or gRPC.
 
 ## Exam requirements
@@ -127,5 +127,7 @@ Do not assume the starter app is correct. Its flaws are the point of the exercis
 | Concept | Category | Main files modified | How to test it |
 |---|---|---|---|
 | Database transactions | A1 | `flight_service/main.py`, `hotel_service/main.py` | `docker compose run --rm tools python scripts/demo_transaction_rollback.py` |
-| Database constraints | A1 | `flight_service/db.py`, `hotel_service/db.py` | `docker compose run --rm tools python scripts/demo_constraints.py` |
-| Idempotency key for client requests | C | `trip_service/schemas.py`, `trip_service/db.py`, `trip_service/main.py` | `docker compose run --rm tools pytest tests/test_idempotency.py -v` or `docker compose run --rm tools python scripts/demo_duplicate_request.py` |
+| Database constraints | A1 (bonus) | `flight_service/db.py`, `hotel_service/db.py` | `docker compose run --rm tools pytest tests/test_constraints.py -v` |
+| Pessimistic locking | A2 | `flight_service/main.py`, `hotel_service/main.py` | `docker compose run --rm tools python scripts/demo_overbooking.py` and `scripts/demo_overbooking_hotel.py` |
+| Saga with compensation | B | `trip_service/main.py`, `trip_service/clients.py`, `trip_service/db.py` | `docker compose run --rm tools python scripts/demo_partial_failure.py` |
+| Idempotency key for client requests | C | `trip_service/schemas.py`, `trip_service/db.py`, `trip_service/main.py` | `docker compose run --rm tools pytest tests/test_idempotency.py -v` |

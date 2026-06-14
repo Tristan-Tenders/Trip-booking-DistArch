@@ -1,42 +1,33 @@
 import os
 
-import asyncpg
-import pytest
+import httpx
 
-FLIGHT_DATABASE_URL = os.getenv(
-    "FLIGHT_DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/flight_db"
-)
+FLIGHT_URL = os.getenv("FLIGHT_URL", "http://localhost:8001")
 
 
-@pytest.mark.asyncio
-async def test_flight_booking_transaction_rollback():
-    conn = await asyncpg.connect(FLIGHT_DATABASE_URL)
-    try:
-        before = await conn.fetchrow("""
-            SELECT seats_available
-            FROM flights
-            WHERE id = 'FL-MANY-SEATS'
-        """)
+def _reset():
+    with httpx.Client(timeout=10) as client:
+        client.post(f"{FLIGHT_URL}/admin/reset").raise_for_status()
 
-        try:
-            async with conn.transaction():
-                await conn.fetchrow("""
-                    UPDATE flights
-                    SET seats_available = seats_available - 1
-                    WHERE id = 'FL-MANY-SEATS'
-                """)
 
-                raise Exception("forced failure")
+def test_book_flight_rolls_back_on_forced_failure():
+    _reset()
+    with httpx.Client(timeout=10) as client:
+        before = client.get(f"{FLIGHT_URL}/flights/FL-ONE-SEAT").json()
 
-        except Exception:
-            pass
+        response = client.post(
+            f"{FLIGHT_URL}/flights/FL-ONE-SEAT/bookings",
+            json={
+                "trip_id": "11111111-1111-1111-1111-111111111111",
+                "traveler_name": "Rollback Test",
+                "seats": 1,
+                "fail_after_decrement": True,
+            },
+        )
 
-        after = await conn.fetchrow("""
-            SELECT seats_available
-            FROM flights
-            WHERE id = 'FL-MANY-SEATS'
-        """)
+        after = client.get(f"{FLIGHT_URL}/flights/FL-ONE-SEAT").json()
+        state = client.get(f"{FLIGHT_URL}/debug/state").json()
 
-        assert after["seats_available"] == before["seats_available"]
-    finally:
-        await conn.close()
+    assert response.status_code == 500
+    assert after["seats_available"] == before["seats_available"]
+    assert state["flight_bookings"] == []
