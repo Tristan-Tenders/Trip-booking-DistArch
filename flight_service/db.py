@@ -45,7 +45,7 @@ async def init_db() -> None:
             origin TEXT NOT NULL,
             destination TEXT NOT NULL,
             departure_date TEXT NOT NULL,
-            seats_available INTEGER NOT NULL,
+            seats_available INTEGER NOT NULL CHECK (seats_available >= 0),
             price_cents INTEGER NOT NULL
         )
         """

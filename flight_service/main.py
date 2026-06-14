@@ -58,41 +58,58 @@ async def get_flight(flight_id: str) -> dict:
 @app.post("/flights/{flight_id}/bookings")
 async def book_flight(flight_id: str, request: FlightBookingRequest) -> dict:
     pool = db.get_pool()
-    flight = await pool.fetchrow("SELECT * FROM flights WHERE id = $1", flight_id)
-    if flight is None:
-        raise HTTPException(status_code=404, detail="Flight not found")
 
-    # INTENTIONAL NAIVE DESIGN:
-    # This check/update is not protected by a transaction or row lock.
-    # Several concurrent requests can pass this check before any decrement is visible.
-    if flight["seats_available"] < request.seats:
-        raise HTTPException(status_code=409, detail="Not enough seats available")
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            flight = await conn.fetchrow(
+                """
+                SELECT *
+                FROM flights
+                WHERE id = $1
+                """,
+                flight_id,
+            )
 
-    await maybe_delay(request.delay_after_check_ms)
+            if flight is None:
+                raise HTTPException(status_code=404, detail="Flight not found")
 
-    await pool.execute(
-        "UPDATE flights SET seats_available = seats_available - $1 WHERE id = $2",
-        request.seats,
-        flight_id,
-    )
+            # INTENTIONAL NAIVE DESIGN:
+            # This check/update is not protected by a transaction or row lock.
+            # Several concurrent requests can pass this check before any decrement is visible.
+            if flight["seats_available"] < request.seats:
+                raise HTTPException(status_code=409, detail="Not enough seats available")
 
-    if request.fail_after_decrement:
-        raise HTTPException(status_code=500, detail="Forced failure after decrement")
+            await maybe_delay(request.delay_after_check_ms)
 
-    booking_id = uuid4()
-    booking = await pool.fetchrow(
-        """
-        INSERT INTO flight_bookings (id, trip_id, flight_id, traveler_name, seats, status)
-        VALUES ($1, $2, $3, $4, $5, 'CONFIRMED')
-        RETURNING *
-        """,
-        booking_id,
-        request.trip_id,
-        flight_id,
-        request.traveler_name,
-        request.seats,
-    )
-    return dict(booking)
+            await conn.execute(
+                """
+                UPDATE flights
+                SET seats_available = seats_available - $1
+                WHERE id = $2
+                """,
+                request.seats,
+                flight_id,
+            )
+
+            if request.fail_after_decrement:
+                raise HTTPException(status_code=500, detail="Forced failure after decrement")
+
+            booking_id = uuid4()
+
+            booking = await conn.fetchrow(
+                """
+                INSERT INTO flight_bookings (id, trip_id, flight_id, traveler_name, seats, status)
+                VALUES ($1, $2, $3, $4, $5, 'CONFIRMED')
+                RETURNING *
+                """,
+                booking_id,
+                request.trip_id,
+                flight_id,
+                request.traveler_name,
+                request.seats,
+            )
+
+            return dict(booking)
 
 
 @app.post("/flight-bookings/{booking_id}/cancel")

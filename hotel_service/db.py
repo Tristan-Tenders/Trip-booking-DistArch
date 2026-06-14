@@ -44,7 +44,7 @@ async def init_db() -> None:
             id TEXT PRIMARY KEY,
             city TEXT NOT NULL,
             name TEXT NOT NULL,
-            rooms_available INTEGER NOT NULL,
+            rooms_available INTEGER NOT NULL CHECK (rooms_available >= 0),
             price_per_night_cents INTEGER NOT NULL
         )
         """
