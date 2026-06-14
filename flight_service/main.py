@@ -74,11 +74,6 @@ async def book_flight(flight_id: str, request: FlightBookingRequest) -> dict:
             if flight is None:
                 raise HTTPException(status_code=404, detail="Flight not found")
 
-            # CONCURRENCY CONTROL (pessimistic locking):
-            # FOR UPDATE locks this row for the duration of the transaction.
-            # Concurrent requests for the same flight must wait until this
-            # transaction commits or rolls back, so they always see an
-            # up-to-date seats_available value before checking it.
             if flight["seats_available"] < request.seats:
                 
                 raise HTTPException(status_code=409, detail="Not enough seats available")

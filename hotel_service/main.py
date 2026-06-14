@@ -77,11 +77,6 @@ async def reserve_hotel(hotel_id: str, request: HotelReservationRequest) -> dict
             if hotel is None:
                 raise HTTPException(status_code=404, detail="Hotel not found")
 
-            # CONCURRENCY CONTROL (pessimistic locking):
-            # FOR UPDATE locks this row for the duration of the transaction.
-            # Concurrent requests for the same hotel must wait until this
-            # transaction commits or rolls back, so they always see an
-            # up-to-date rooms_available value before checking it.
             if hotel["rooms_available"] < request.rooms:
                 raise HTTPException(status_code=409, detail="Not enough rooms available")
 
