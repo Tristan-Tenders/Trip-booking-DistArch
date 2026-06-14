@@ -129,6 +129,9 @@ async def cancel_reservation(reservation_id: UUID) -> dict:
 
             # INTENTIONAL NAIVE DESIGN:
             # Cancellation is not idempotent; calling this twice increments rooms twice.
+            if reservation["status"] == "CANCELLED":
+                return dict(reservation)
+
             updated = await conn.fetchrow(
                 """UPDATE hotel_reservations 
                 SET status = 'CANCELLED' 

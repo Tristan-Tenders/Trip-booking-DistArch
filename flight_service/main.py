@@ -131,6 +131,10 @@ async def cancel_booking(booking_id: UUID) -> dict:
 
             # INTENTIONAL NAIVE DESIGN:
             # Cancellation is not idempotent; calling this twice increments seats twice.
+
+            if booking["status"] == "CANCELLED":
+                return dict(booking)
+
             updated = await conn.fetchrow(
                 """
                 UPDATE flight_bookings 
