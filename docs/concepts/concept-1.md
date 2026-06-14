@@ -40,6 +40,6 @@ docker compose run --rm tools pytest tests/test_idempotency.py -v
 
 ## Limitation
 
-- If the first request fails (e.g. payment declined), the trip is stored as FAILED. A retry with the same key returns that failed trip instead of trying again. The client needs a new key to retry.
+- If the first request fails (e.g. payment declined), the trip is stored as FAILED. A retry with the same key replays the original 502 response — it does not reattempt the booking. The client needs a new key to retry.
 - The key has no expiry and no authentication — anyone who knows a key can reuse it.
 - Keys are scoped to the `trips` table only, not across services.

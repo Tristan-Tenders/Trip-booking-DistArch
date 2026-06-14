@@ -62,6 +62,11 @@ async def create_trip(request: CreateTripRequest) -> dict:
     if request.idempotency_key is not None:
         existing = await db.get_trip_by_idempotency_key(request.idempotency_key)
         if existing is not None:
+            if existing["status"] not in ("CONFIRMED", "PENDING"):
+                raise HTTPException(
+                    status_code=502,
+                    detail={"trip_id": str(existing["id"]), "error": existing["error_message"]},
+                )
             return existing
 
     try:
@@ -75,6 +80,13 @@ async def create_trip(request: CreateTripRequest) -> dict:
         )
     except asyncpg.UniqueViolationError:
         existing = await db.get_trip_by_idempotency_key(request.idempotency_key)
+        if existing is None:
+            raise HTTPException(status_code=500, detail="Idempotency key conflict but trip not found")
+        if existing["status"] not in ("CONFIRMED", "PENDING"):
+            raise HTTPException(
+                status_code=502,
+                detail={"trip_id": str(existing["id"]), "error": existing["error_message"]},
+            )
         return existing
     trip_id = trip["id"]
 
