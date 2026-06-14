@@ -83,6 +83,20 @@ async def reserve_hotel(
     )
 
 
+async def cancel_flight_booking(booking_id: str) -> dict[str, Any]:
+    return await _request(
+        "POST",
+        f"{flight_service_url()}/flight-bookings/{booking_id}/cancel",
+    )
+
+
+async def cancel_hotel_reservation(reservation_id: str) -> dict[str, Any]:
+    return await _request(
+        "POST",
+        f"{hotel_service_url()}/hotel-reservations/{reservation_id}/cancel",
+    )
+
+
 async def authorize_payment(
     *,
     trip_id: str,
